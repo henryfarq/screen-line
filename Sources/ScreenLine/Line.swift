@@ -217,8 +217,11 @@ final class Line: ObservableObject {
     }
 
     /// The corner cross and "Take down" both end up here.
+    /// A file from Screen Line's folder goes back to the Desktop, and any
+    /// other file just comes off the line and stays where it is.
     func discard(_ id: UUID, quietly: Bool = false) {
-        if isInInbox(id) { trash(id, quietly: quietly) } else { drop(id, quietly: quietly) }
+        if isInInbox(id), saveToDesktop(id, quietly: quietly) { return }
+        drop(id, quietly: quietly)
     }
 
     /// The oldest photo falling off a full line. Like the cross, a file from
@@ -243,21 +246,24 @@ final class Line: ObservableObject {
     }
 
     private func letGo(_ id: UUID) {
-        if isInInbox(id), trash(id, quietly: true) { return }
-        drop(id, quietly: true)
+        discard(id, quietly: true)
     }
 
     /// Inbox mode: keep a screenshot by moving it to the Desktop.
-    func saveToDesktop(_ id: UUID) {
-        guard let item = items.first(where: { $0.id == id }) else { return }
+    @discardableResult
+    func saveToDesktop(_ id: UUID, quietly: Bool = true) -> Bool {
+        guard let item = items.first(where: { $0.id == id }) else { return false }
         let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         let target = uniqueURL(in: desktop, for: item.url.lastPathComponent)
         do {
+            ScreenshotWatcher.markReturned(target)
             try FileManager.default.moveItem(at: item.url, to: target)
-            drop(id, quietly: true)
+            drop(id, quietly: quietly)
+            return true
         } catch {
             log.error("Could not save to Desktop: \(error.localizedDescription, privacy: .public)")
-            NSSound.beep()
+            if !quietly { NSSound.beep() }
+            return false
         }
     }
 

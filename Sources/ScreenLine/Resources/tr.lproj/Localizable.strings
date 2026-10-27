@@ -2,7 +2,7 @@
 
 /* AppDelegate */
 "Let Screen Line handle your screenshots?" = "Ekran görüntülerini Screen Line yönetsin mi?";
-"Screenshots will hang on the line the instant you take them, without the floating thumbnail, and will not pile up on your Desktop. Drag one to a folder to keep it, or discard it with the cross. You can turn this off from the menu bar, and your settings come back when Screen Line quits." = "Ekran görüntüleri, kayan küçük resim olmadan anında ipin üzerine asılacak ve Masaüstünüzde birikmeyecek. Saklamak için bir klasöre sürükleyin ya da çarpı ile silin. Bunu menü çubuğundan kapatabilirsiniz; Screen Line kapandığında ayarlarınız geri gelir.";
+"Screenshots will hang on the line the instant you take them, without the floating thumbnail. Drag one to a folder to keep it, or click the cross to send it to your Desktop. You can turn this off by quitting the app, and your settings come back when Screen Line quits." = "Screenshots will hang on the line the instant you take them, without the floating thumbnail. Drag one to a folder to keep it, or click the cross to send it to your Desktop. You can turn this off by quitting the app, and your settings come back when Screen Line quits.";
 "Turn on" = "Etkinleştir";
 "Not now" = "Şimdi değil";
 "Quit Screen Line" = "Screen Line'yu kapat";

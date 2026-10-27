@@ -69,7 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = NSHostingView(rootView: LineView(line: line))
         host.sizingOptions = []
-        panel = LinePanel(content: host)
+        let container = DropContainer(host: host)
+        container.onDrop = { [weak self] urls in self?.hangDropped(urls) }
+        panel = LinePanel(content: container)
         panel.placeOnScreen()
         updateCapacity()
 
@@ -229,7 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.messageText = L("Let Screen Line handle your screenshots?")
         alert.informativeText = L(
-            "Screenshots will hang on the line the instant you take them, without the floating thumbnail, and will not pile up on your Desktop. Drag one to a folder to keep it, or discard it with the cross. You can turn this off from the menu bar, and your settings come back when Screen Line quits.")
+            "Screenshots will hang on the line the instant you take them, without the floating thumbnail. Drag one to a folder to keep it, or click the cross to send it to your Desktop. You can turn this off by quitting the app, and your settings come back when Screen Line quits.")
         alert.addButton(withTitle: L("Turn on"))
         alert.addButton(withTitle: L("Not now"))
         if let icon = NSImage(named: "ScreenLine") ?? NSApp.applicationIconImage { alert.icon = icon }
@@ -306,6 +308,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             self?.fly(id, from: from)
         }
+    }
+
+    /// Screenshots and recordings dropped on the line hang where they are.
+    private func hangDropped(_ urls: [URL]) {
+        for url in urls { line.hang(url) }
+        reveal()
     }
 
     private func fly(_ id: UUID, from: CGRect) {
@@ -520,9 +528,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// How long the cursor is away before the line tucks back up.
     private static let retractDelay: TimeInterval = 0.5
 
+    /// Whether a screenshot or recording is being dragged towards the line.
+    private var dropActive = false
+    private var dragBaseline = NSPasteboard(name: .drag).changeCount
+
+    /// While a file is being dragged, the panel takes the whole strip so the
+    /// line can receive the drop, and the line comes down to meet it.
+    private func updateDropState() {
+        let drag = NSPasteboard(name: .drag)
+        if NSEvent.pressedMouseButtons & 1 == 0 {
+            dragBaseline = drag.changeCount
+            dropActive = false
+        } else if !GrabView.isDragging, drag.changeCount != dragBaseline,
+                  !DropContainer.hangable(in: drag).isEmpty {
+            dropActive = true
+        }
+        if dropActive {
+            panel.ignoresMouseEvents = false
+            if !isRevealed, isPresent { reveal() }
+        }
+    }
+
     private func tick() {
         let mouse = NSEvent.mouseLocation
         let now = Date()
+        updateDropState()
 
         let screenUnderPointer = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
         let inMenuBar = screenUnderPointer.map { NSMouseInRect(mouse, Self.menuBarBand(of: $0), false) } ?? false
@@ -568,7 +598,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let inside = NSMouseInRect(mouse, zone, false)
         if inside && pinned { pinned = false }
 
-        let busy = pinned || GrabView.isDragging || GrabView.isShowingMenu
+        let busy = pinned || dropActive || GrabView.isDragging || GrabView.isShowingMenu
             || line.pressedID != nil || now < peekUntil
         if inside || busy {
             awaySince = nil
@@ -586,7 +616,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// mouse while the cursor is over a photo. Everywhere else, clicks go to
     /// whatever is underneath.
     private func updateMousePassThrough(_ mouse: NSPoint) {
-        guard !GrabView.isDragging else { return }
+        guard !GrabView.isDragging, !dropActive else { return }
         let local = panel.convertPoint(fromScreen: mouse)
         let flipped = CGPoint(x: local.x, y: panel.frame.height - local.y)
         // Tucked away, only the eye takes clicks.

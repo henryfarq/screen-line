@@ -27,7 +27,27 @@ final class ScreenshotWatcher {
     private let onNew: (URL) -> Void
     private let onChange: () -> Void
 
-    private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tif", "tiff", "gif", "webp"]
+    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tif", "tiff", "gif", "webp"]
+
+    /// Whether a file can hang on the line: an image or a recording.
+    static func isHangable(_ url: URL) -> Bool {
+        imageExtensions.contains(url.pathExtension.lowercased()) || isRecording(url)
+    }
+
+    /// Files Screen Line itself sent back to the Desktop. They still carry
+    /// the screenshot tag, so without this they would hang again at once.
+    private static let returnedLock = NSLock()
+    nonisolated(unsafe) private static var returned: Set<String> = []
+
+    static func markReturned(_ url: URL) {
+        returnedLock.lock(); defer { returnedLock.unlock() }
+        returned.insert(url.standardizedFileURL.path)
+    }
+
+    private static func wasReturned(_ url: URL) -> Bool {
+        returnedLock.lock(); defer { returnedLock.unlock() }
+        return returned.contains(url.standardizedFileURL.path)
+    }
 
     static let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
 
@@ -172,6 +192,7 @@ final class ScreenshotWatcher {
     }
 
     private func isCandidate(_ url: URL) -> Bool {
+        if Self.wasReturned(url) { return false }
         if isRecording(url) {
             if inInbox { return true }
             // A folder chosen by hand only gets images, never every video in it.
