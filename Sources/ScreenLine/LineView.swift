@@ -116,13 +116,13 @@ struct LineView: View {
     }
 }
 
-/// Hides the line while it is always down; once it has dropped down on its
-/// own, keeps it there.
+/// An open eye while the line stays down (click to hide it); a closed eye
+/// once it is hidden (click to keep it down).
 private struct EyeButton: View {
     let hides: Bool
 
     var body: some View {
-        Image(systemName: hides ? "eye.slash" : "eye")
+        Image(systemName: hides ? "eye" : "eye.slash")
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.primary)
             .frame(width: 28, height: 28)
