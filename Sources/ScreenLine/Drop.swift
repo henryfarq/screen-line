@@ -1,8 +1,7 @@
 import AppKit
 
 /// Holds the line view and accepts screenshots and recordings dragged onto
-/// the line, from Finder or the Desktop. They hang where they are: the file
-/// is never copied or moved.
+/// the line, from Finder or the Desktop.
 final class DropContainer: NSView {
     var onDrop: (([URL]) -> Void)?
 

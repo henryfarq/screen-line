@@ -217,11 +217,28 @@ final class Line: ObservableObject {
     }
 
     /// The corner cross and "Take down" both end up here.
-    /// A file from Screen Line's folder goes back to the Desktop, and any
-    /// other file just comes off the line and stays where it is.
+    /// Taking a photo off the line always sends its file to the Desktop. If it
+    /// cannot be moved there, it still comes off the line and stays where it is.
     func discard(_ id: UUID, quietly: Bool = false) {
-        if isInInbox(id), saveToDesktop(id, quietly: quietly) { return }
+        if saveToDesktop(id, quietly: quietly) { return }
         drop(id, quietly: quietly)
+    }
+
+    /// A file dragged onto the line moves into Screen Line's folder, so it is
+    /// gone from where it was while it hangs. Returns where it is now, or nil
+    /// when it could not be moved.
+    func moveIntoInbox(_ url: URL) -> URL? {
+        let folder = Inbox.folder
+        if url.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL { return url }
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let target = uniqueURL(in: folder, for: url.lastPathComponent)
+            try FileManager.default.moveItem(at: url, to: target)
+            return target
+        } catch {
+            log.error("Could not move \(url.lastPathComponent, privacy: .public) onto the line: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     /// The oldest photo falling off a full line. Like the cross, a file from
@@ -254,6 +271,11 @@ final class Line: ObservableObject {
     func saveToDesktop(_ id: UUID, quietly: Bool = true) -> Bool {
         guard let item = items.first(where: { $0.id == id }) else { return false }
         let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+        // Already on the Desktop: nothing to move.
+        if item.url.deletingLastPathComponent().standardizedFileURL == desktop.standardizedFileURL {
+            drop(id, quietly: quietly)
+            return true
+        }
         let target = uniqueURL(in: desktop, for: item.url.lastPathComponent)
         do {
             ScreenshotWatcher.markReturned(target)

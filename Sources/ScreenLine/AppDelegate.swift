@@ -310,9 +310,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Screenshots and recordings dropped on the line hang where they are.
+    /// Screenshots and recordings dropped on the line move onto it: the file
+    /// leaves where it was, and goes back to the Desktop when taken down.
     private func hangDropped(_ urls: [URL]) {
-        for url in urls { line.hang(url) }
+        for url in urls {
+            if line.items.contains(where: { $0.url == url && !$0.falling }) { continue }
+            // If it cannot be moved, it still hangs from where it is.
+            line.hang(line.moveIntoInbox(url) ?? url)
+        }
         reveal()
     }
 

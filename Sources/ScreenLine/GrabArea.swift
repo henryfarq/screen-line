@@ -56,9 +56,7 @@ struct GrabArea: NSViewRepresentable {
             }
             menu.addItem(ClosureMenuItem(L("Show in Finder")) { line.reveal(id) })
             let inInbox = line.isInInbox(id)
-            if inInbox {
-                menu.addItem(ClosureMenuItem(L("Save to Desktop")) { line.saveToDesktop(id) })
-            }
+            menu.addItem(ClosureMenuItem(L("Save to Desktop")) { line.saveToDesktop(id, quietly: false) })
             menu.addItem(.separator())
             if inInbox {
                 menu.addItem(ClosureMenuItem(L("Discard")) { line.discard(id) })
