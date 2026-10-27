@@ -5,6 +5,8 @@ import SwiftUI
 struct PeggedView: View {
     let item: Pegged
     @ObservedObject var line: Line
+    /// Under 1 when the line is crowded and every card has shrunk to fit.
+    var scale: CGFloat = 1
 
     @State private var swing: Double = 0
     @State private var arrived = false
@@ -35,23 +37,23 @@ struct PeggedView: View {
 
     /// The photo fits inside the card area keeping its proportions, so the
     /// white border hugs it whether the screenshot is wide or tall.
-    static func photoSize(for size: CGSize) -> CGSize {
-        let maxW = Layout.cardWidth - 14, maxH = Layout.photoMaxHeight
+    static func photoSize(for size: CGSize, scale: CGFloat = 1) -> CGSize {
+        let maxW = max(16, Layout.cardWidth * scale - 14), maxH = max(12, Layout.photoMaxHeight * scale)
         guard size.width > 0, size.height > 0 else { return CGSize(width: maxW, height: maxH) }
         let scale = min(maxW / size.width, maxH / size.height)
         return CGSize(width: size.width * scale, height: size.height * scale)
     }
 
     /// The card around the photo: the photo plus the glass inset.
-    static func cardSize(for size: CGSize) -> CGSize {
-        let p = photoSize(for: size)
+    static func cardSize(for size: CGSize, scale: CGFloat = 1) -> CGSize {
+        let p = photoSize(for: size, scale: scale)
         return CGSize(width: p.width + Frame.inset * 2, height: p.height + Frame.inset * 2)
     }
 
     /// Distance from the top of the hanging view (the clip) to the card.
     static let cardOffsetBelowTop: CGFloat = 26 - 12
 
-    private var photoSize: CGSize { Self.photoSize(for: item.thumb.size) }
+    private var photoSize: CGSize { Self.photoSize(for: item.thumb.size, scale: scale) }
 
     private var card: some View {
         Image(nsImage: item.thumb)

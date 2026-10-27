@@ -8,9 +8,11 @@ final class ScreenshotWatcher {
     /// On the Desktop we only accept real screenshots, tagged by macOS with an
     /// extended attribute. In a dedicated folder, any image counts.
     private let onlyTaggedScreenshots: Bool
-    /// Screen recordings carry no tag, so they are only picked up in
-    /// Screen Line's own folder, where nothing else is saved.
-    private let acceptsRecordings: Bool
+    /// In Screen Line's own folder every recording counts, since nothing else
+    /// is saved there. Elsewhere, like the Desktop, a recording has to be
+    /// tagged by macOS or carry the name macOS gives its recordings.
+    private let inInbox: Bool
+    private let anyImage: Bool
     private var known: Set<String>?
     private var source: DispatchSourceFileSystemObject?
     private var pending: DispatchWorkItem?
@@ -38,7 +40,8 @@ final class ScreenshotWatcher {
         self.folder = folder ?? Self.screenshotFolder()
         onlyTaggedScreenshots = !anyImage
             && self.folder.standardizedFileURL.path == Self.desktop.standardizedFileURL.path
-        acceptsRecordings = self.folder.standardizedFileURL.path == Inbox.folder.standardizedFileURL.path
+        self.anyImage = anyImage
+        inInbox = self.folder.standardizedFileURL.path == Inbox.folder.standardizedFileURL.path
     }
 
     static func screenshotFolder() -> URL {
@@ -169,9 +172,25 @@ final class ScreenshotWatcher {
     }
 
     private func isCandidate(_ url: URL) -> Bool {
-        if isRecording(url) { return acceptsRecordings }
+        if isRecording(url) {
+            if inInbox { return true }
+            // A folder chosen by hand only gets images, never every video in it.
+            return !anyImage && (isScreenCapture(url) || Self.looksLikeRecording(url))
+        }
         guard Self.imageExtensions.contains(url.pathExtension.lowercased()) else { return false }
         return onlyTaggedScreenshots ? isScreenCapture(url) : true
+    }
+
+    /// macOS names recordings "Screen Recording 2026-…", in the system language.
+    private static let recordingNames = [
+        "Screen Recording", "Grabación de pantalla", "Enregistrement de l", "Bildschirmaufnahme",
+        "Registrazione schermo", "Gravação de Tela", "Gravação de ecrã", "Schermopname",
+        "画面収録", "屏幕录制", "螢幕錄製", "화면 기록", "Ekran Kaydı", "Запись экрана",
+    ]
+
+    private static func looksLikeRecording(_ url: URL) -> Bool {
+        let name = url.lastPathComponent
+        return recordingNames.contains { name.hasPrefix($0) }
     }
 
     private func isScreenCapture(_ url: URL) -> Bool {

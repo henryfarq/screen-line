@@ -215,6 +215,8 @@ final class Line: ObservableObject {
     /// of that folder. If the Trash refuses it, it still leaves the line.
     /// Moves along a line that holds more than fit, from a scroll gesture.
     func scroll(by delta: CGFloat) {
+        // A line that shrinks its cards to fit has nothing to scroll to.
+        guard Line.keepOnLine != nil else { return }
         let most = CGFloat(max(0, items.count - visibleCount)) * Layout.spacing
         let next = min(most, max(0, scroll + delta))
         if next != scroll { scroll = next }

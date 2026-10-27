@@ -283,7 +283,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// A new screenshot lifts off from where it was taken and flies to its
     /// place on the line. Without a known capture area it simply drops in.
-    private func hangCapture(_ url: URL) {
+    private func hangCapture(_ url: URL, attempt: Int = 0) {
+        // A recording can show up before macOS has finished writing it, and
+        // has no first frame yet. Try again for a few seconds.
+        if isRecording(url), attempt < 6, makeThumbnail(url) == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.hangCapture(url, attempt: attempt + 1)
+            }
+            return
+        }
         let from = captureRect(of: url)
         let screen = from.flatMap { from in
             NSScreen.screens.first { NSMouseInRect(CGPoint(x: from.midX, y: from.midY), $0.frame, false) }
@@ -341,7 +349,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          visible: line.visibleCount, scroll: line.scroll)
         let viewTop = Layout.ropeY(x: x, width: width) - Layout.pinAbove
         let cardTop = viewTop + PeggedView.cardOffsetBelowTop
-        let size = PeggedView.cardSize(for: line.items[index].thumb.size)
+        let scale = Layout.cardScale(count: line.items.count, width: width)
+        let size = PeggedView.cardSize(for: line.items[index].thumb.size, scale: scale)
         return CGRect(x: panel.frame.minX + x - size.width / 2,
                       y: panel.frame.maxY - cardTop - size.height,
                       width: size.width, height: size.height)
@@ -610,7 +619,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let usable = panel.frame.width - 200
         let fits = max(3, min(12, Int(usable / Layout.spacing)))
         line.visibleCount = fits
-        line.maxItems = max(fits, Line.keepOnLine ?? fits)
+        // Without Keep on line, a crowded line shrinks its cards to fit.
+        line.maxItems = Line.keepOnLine.map { max(fits, $0) } ?? max(fits, Layout.crowdLimit)
     }
 
     // MARK: Menu bar

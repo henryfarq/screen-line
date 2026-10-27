@@ -42,6 +42,19 @@ enum Layout {
     /// the newest stays where the last one would hang on a full line, and
     /// `scroll` brings older ones in from the left. Otherwise (a line hung
     /// on a wider screen) they move closer together so none is past the edge.
+    /// The smallest a card shrinks to, like the narrowest tab in a browser.
+    static let minScale: CGFloat = 0.3
+    /// Most cards the line holds when it is not scrolling.
+    static let crowdLimit = 30
+
+    /// A line with more cards than fit across the screen keeps them all and
+    /// makes each one smaller, as tabs do, instead of dropping the oldest.
+    static func cardScale(count: Int, width: CGFloat) -> CGFloat {
+        guard Line.keepOnLine == nil, count > 1 else { return 1 }
+        let room = max(0, width - 200) / CGFloat(count - 1)
+        return min(1, max(minScale, room / spacing))
+    }
+
     static func x(index: Int, count: Int, width: CGFloat, visible: Int, scroll: CGFloat) -> CGFloat {
         if Line.keepOnLine != nil && count > visible {
             let newest = width / 2 + CGFloat(visible - 1) * spacing / 2
@@ -72,8 +85,9 @@ struct LineView: View {
                     let x = Layout.x(index: index, count: line.items.count, width: width,
                                      visible: line.visibleCount, scroll: line.scroll)
                     let ropeY = Layout.ropeY(x: x, width: width)
-                    PeggedView(item: item, line: line)
-                        .frame(width: Layout.cardWidth, height: Layout.panelHeight - ropeY, alignment: .top)
+                    let scale = Layout.cardScale(count: line.items.count, width: width)
+                    PeggedView(item: item, line: line, scale: scale)
+                        .frame(width: Layout.cardWidth * scale, height: Layout.panelHeight - ropeY, alignment: .top)
                         // Photos scrolled towards an edge fade out before they reach it.
                         .opacity(min(1, max(0, min(x, width - x) / 90)))
                         .position(x: x, y: ropeY - Layout.pinAbove + (Layout.panelHeight - ropeY) / 2)
