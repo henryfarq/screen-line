@@ -115,8 +115,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 MainActor.assumeIsolated {
                     // Opened on purpose counts for the Space it was opened on.
                     if name == NSWorkspace.activeSpaceDidChangeNotification { self?.openedOnPurpose = false }
-                    self?.refresh()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self?.refresh() }
+                    self?.keepOnScreen()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self?.keepOnScreen() }
                 }
             }
         }
@@ -363,6 +363,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return CGRect(x: panel.frame.minX + x - size.width / 2,
                       y: panel.frame.maxY - cardTop - size.height,
                       width: size.width, height: size.height)
+    }
+
+    /// After a switch of Space or a full screen app coming or going, the line
+    /// (or just the eye, when it is hidden) is brought back in front, and
+    /// placed again: a full screen Space has no menu bar to hang below.
+    private func keepOnScreen() {
+        refresh()
+        guard isPresent else { return }
+        panel.placeOnScreen(panel.screen)
+        updateCapacity()
+        panel.orderFrontRegardless()
     }
 
     /// Decides whether the panel is ordered in at all: something to show,
