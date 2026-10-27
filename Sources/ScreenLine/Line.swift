@@ -35,6 +35,17 @@ final class Line: ObservableObject {
     /// Whether the line has slid down into view.
     @Published var revealed = false
 
+    /// Whether the line stays down. The eye on the line turns it off, and
+    /// then it only drops down when the pointer rests in the menu bar.
+    nonisolated static var alwaysDown: Bool {
+        get { !UserDefaults.standard.bool(forKey: "lineHidden") }
+        set { UserDefaults.standard.set(!newValue, forKey: "lineHidden") }
+    }
+    @Published var isAlwaysDown = Line.alwaysDown
+    var onToggleHide: (() -> Void)?
+    /// The eye's place in `hitRects`.
+    static let eyeID = UUID()
+
     /// Card frames in window coordinates, reported by the views. The panel
     /// uses them to only catch clicks over photos and let the rest through.
     var hitRects: [UUID: CGRect] = [:]

@@ -51,7 +51,7 @@ enum Layout {
     /// makes each one smaller, as tabs do, instead of dropping the oldest.
     static func cardScale(count: Int, width: CGFloat) -> CGFloat {
         guard Line.keepOnLine == nil, count > 1 else { return 1 }
-        let room = max(0, width - 200) / CGFloat(count - 1)
+        let room = max(0, width - 260) / CGFloat(count - 1)
         return min(1, max(minScale, room / spacing))
     }
 
@@ -61,7 +61,7 @@ enum Layout {
             return newest - CGFloat(count - 1 - index) * spacing + scroll
         }
         let gaps = CGFloat(max(count - 1, 0))
-        let step = gaps > 0 ? min(spacing, max(0, width - 200) / gaps) : spacing
+        let step = gaps > 0 ? min(spacing, max(0, width - 260) / gaps) : spacing
         return width / 2 - gaps * step / 2 + CGFloat(index) * step
     }
 }
@@ -72,6 +72,7 @@ struct LineView: View {
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
+            ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
                 Rope(width: width)
 
@@ -100,10 +101,34 @@ struct LineView: View {
             .offset(y: line.revealed ? 0 : -(Layout.panelHeight + 12))
             .animation(line.revealed ? .spring(response: 0.42, dampingFraction: 0.82)
                                      : .easeIn(duration: 0.22), value: line.revealed)
+
+            // The eye never tucks away: it is how the line comes back.
+            EyeButton(hides: line.isAlwaysDown)
+                .position(x: 30, y: Layout.ropeTop + 30)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: HitRectsKey.self, value: [Line.eyeID: g.frame(in: .global)])
+                })
+            }
         }
         .onPreferenceChange(HitRectsKey.self) { rects in
             line.hitRects = rects
         }
+    }
+}
+
+/// Hides the line while it is always down; once it has dropped down on its
+/// own, keeps it there.
+private struct EyeButton: View {
+    let hides: Bool
+
+    var body: some View {
+        Image(systemName: hides ? "eye.slash" : "eye")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 28, height: 28)
+            .glassFrame(circle: true)
+            .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+            .allowsHitTesting(false)
     }
 }
 

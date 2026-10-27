@@ -38,7 +38,7 @@ cp "$BIN" "$APP/Contents/MacOS/ScreenLine"
 
 # Icon
 WORK="$(mktemp -d)"
-swift scripts/make-icon.swift "$WORK/icon.png"
+swift scripts/make-icon.swift Assets/icon-source.png "$WORK/icon.png"
 ICONSET="$WORK/ScreenLine.iconset"
 mkdir -p "$ICONSET"
 for s in 16 32 128 256 512; do

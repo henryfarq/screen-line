@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var awaySince: Date?
     /// Whether the line should be up, if nothing prevents it. A full screen
     /// app on that screen does: the line waits until you leave full screen.
-    private var wanted = false
+    private var wanted = true
     /// Set when you open the line on purpose, so it stays up while empty.
     private var keepOpen = false
     /// Opened on purpose with the shortcut or the menu, which counts over a
@@ -83,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         setUpStatusItem()
         watchMenuBarClicks()
+        watchEyeClicks()
+        line.onToggleHide = { [weak self] in self?.setAlwaysDown(!Line.alwaysDown) }
+        panel.placeOnScreen()
+        refresh()
 
         Markup.shared.onSaved = { [weak self] url in self?.line.reloadThumbnail(for: url) }
         Trim.shared.onSaved = { [weak self] url in self?.line.reloadThumbnail(for: url) }
@@ -137,7 +141,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
                 guard let self, self.line.liveCount == 0 else { return }
                 self.keepOpen = false
-                self.wanted = false
                 self.refresh()
             }
         }
@@ -258,15 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Showing and hiding
 
-    /// An empty line goes away, unless it was opened on purpose.
     private func itemsChanged() {
         updateStatusIcon()
-        guard line.liveCount == 0, !keepOpen else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-            guard let self, self.line.liveCount == 0, !self.keepOpen else { return }
-            self.wanted = false
-            self.refresh()
-        }
     }
 
     /// The line comes down on that screen for a moment, then tucks away.
@@ -376,7 +372,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         isPresent = true
         panel.alphaValue = 1
         // The window itself only comes in while the line is down; see setRevealed.
-        if isRevealed { panel.orderFrontRegardless() }
+        // The panel stays in even with the line tucked away: the eye lives on
+        // it, and clicks pass through everywhere else.
+        panel.orderFrontRegardless()
+        if Line.alwaysDown { reveal() }
     }
 
     private func dismiss() {
@@ -406,14 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Tucked away, the line leaves no window behind: an invisible strip
         // over the top of the screen would still sit above other apps for
         // anything that checks what is on top, like screen automation.
-        if on {
-            if isPresent { panel.orderFrontRegardless() }
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                guard let self, !self.isRevealed else { return }
-                self.panel.orderOut(nil)
-            }
-        }
+        if on, isPresent { panel.orderFrontRegardless() }
         if !on {
             pinned = false
             peekUntil = .distantPast
@@ -424,15 +416,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if keepOpen || openedOnPurpose {
                 keepOpen = false
                 openedOnPurpose = false
-                if line.liveCount == 0 { wanted = false }
                 refresh()
             }
         }
     }
 
+    /// The eye on the line: hide it, or keep it down. Hidden, it still drops
+    /// down when the pointer rests in the menu bar.
+    private func setAlwaysDown(_ on: Bool) {
+        Line.alwaysDown = on
+        line.isAlwaysDown = on
+        if on {
+            wanted = true
+            panel.placeOnScreen()
+            updateCapacity()
+            refresh()
+            reveal()
+        } else {
+            pinned = false
+            setRevealed(false)
+        }
+    }
+
+    /// The eye is drawn by the line view but clicked here, like the photos
+    /// are: the panel never becomes the active window, and this does not
+    /// depend on how SwiftUI treats a first click.
+    private func watchEyeClicks() {
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, event.window === self.panel,
+                  let eye = self.line.hitRects[Line.eyeID] else { return event }
+            let point = CGPoint(x: event.locationInWindow.x, y: self.panel.frame.height - event.locationInWindow.y)
+            guard eye.insetBy(dx: -4, dy: -4).contains(point) else { return event }
+            self.setAlwaysDown(!Line.alwaysDown)
+            return nil
+        }
+        if let monitor { clickMonitors.append(monitor) }
+    }
+
     @objc private func toggle() {
         if isRevealed {
-            setRevealed(false)
+            if Line.alwaysDown { setAlwaysDown(false) } else { setRevealed(false) }
         } else {
             keepOpen = true
             wanted = true
@@ -481,7 +504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 guard NSScreen.screens.contains(where: { NSMouseInRect(p, Self.menuBarBand(of: $0), false) }) else { return }
                 self.menuBarSuppressed = true
                 self.hotZoneSince = nil
-                if self.isRevealed {
+                if self.isRevealed, !Line.alwaysDown {
                     self.pinned = false
                     self.setRevealed(false)
                 }
@@ -506,12 +529,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !inMenuBar { menuBarSuppressed = false }
 
         guard isRevealed else {
+            updateMousePassThrough(mouse)
             // Resting in the menu bar brings the line down on that screen.
             // Pushing against the top edge is part of it, and it also works
             // when another display sits above and the pointer never stops.
             // An empty line stays up there: only the shortcut and the menu
             // bring it down on purpose.
-            if line.liveCount > 0, Self.opensFromMenuBar, let screen = screenUnderPointer,
+            if Self.opensFromMenuBar, let screen = screenUnderPointer,
                inMenuBar, !menuBarSuppressed, !FullScreen.blocksLine(on: screen) {
                 let since = hotZoneSince ?? now
                 hotZoneSince = since
@@ -531,6 +555,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         updateMousePassThrough(mouse)
+        // Always down: it only goes away from the eye.
+        if Line.alwaysDown {
+            awaySince = nil
+            return
+        }
 
         // The line's zone runs from its lowest point up to the top of the
         // screen, menu bar included, so moving up never hides it.
@@ -560,7 +589,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !GrabView.isDragging else { return }
         let local = panel.convertPoint(fromScreen: mouse)
         let flipped = CGPoint(x: local.x, y: panel.frame.height - local.y)
-        var overPhoto = line.hitRects.values.contains { $0.insetBy(dx: -4, dy: -4).contains(flipped) }
+        // Tucked away, only the eye takes clicks.
+        let rects = isRevealed ? Array(line.hitRects.values) : [line.hitRects[Line.eyeID]].compactMap { $0 }
+        var overPhoto = rects.contains { $0.insetBy(dx: -4, dy: -4).contains(flipped) }
         // A line longer than the screen also takes the band the photos hang
         // in, gaps included, so a swipe anywhere along it moves it.
         if !overPhoto, line.items.count > line.visibleCount, Line.keepOnLine != nil {
@@ -616,7 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateCapacity() {
-        let usable = panel.frame.width - 200
+        let usable = panel.frame.width - 260
         let fits = max(3, min(12, Int(usable / Layout.spacing)))
         line.visibleCount = fits
         // Without Keep on line, a crowded line shrinks its cards to fit.
@@ -641,153 +672,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// line is empty, so resting in the menu bar and seeing nothing come down
     /// does not look broken.
     private func updateStatusIcon() {
-        let on = ClipboardWatcher.isEnabled
         let count = line.liveCount
-        let description = on ? L("Screen Line, hanging copied images") : "Screen Line"
         let state = count == 0 ? L("The line is empty") : String(format: L("%d on the line"), count)
-        let image = NSImage(systemSymbolName: on ? "tshirt.fill" : "tshirt",
-                            accessibilityDescription: "\(description), \(state)")
-        image?.isTemplate = true
+        let image = StatusIcon.image()
+        image.accessibilityDescription = "Screen Line, \(state)"
         statusItem.button?.image = image
-        statusItem.button?.appearsDisabled = count == 0
-        statusItem.button?.toolTip = "\(description)\n\(state)"
+        statusItem.button?.appearsDisabled = false
+        statusItem.button?.toolTip = "Screen Line\n\(state)"
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-
-        let toggleItem = ClosureMenuItem(isRevealed ? L("Hide line") : L("Show line")) { [weak self] in
-            self?.toggle()
-        }
-        if let shortcut = Shortcut.current, shortcut.key.count == 1 {
-            toggleItem.keyEquivalent = shortcut.key
-            toggleItem.keyEquivalentModifierMask = shortcut.modifiers
-        }
-        menu.addItem(toggleItem)
-
-        let clearItem = ClosureMenuItem(L("Take everything down")) { [weak self] in
-            self?.line.clear()
-        }
-        clearItem.isEnabled = line.liveCount > 0
-        menu.addItem(clearItem)
-
-        let inbox = ClosureMenuItem(L("Handle screenshots")) { [weak self] in
-            self?.setInbox(!Inbox.isEnabled)
-        }
-        inbox.state = Inbox.isEnabled ? .on : .off
-        inbox.toolTip = L("Screenshots hang instantly and skip the Desktop")
-        menu.addItem(inbox)
-
-        let clipboard = ClosureMenuItem(L("Hang copied images")) { [weak self] in
-            self?.setClipboard(!ClipboardWatcher.isEnabled)
-        }
-        clipboard.state = ClipboardWatcher.isEnabled ? .on : .off
-        clipboard.toolTip = L("Images you copy hang on the line too")
-        menu.addItem(clipboard)
-
-        let bringDown = NSMenuItem(title: L("Bring the line down"), action: nil, keyEquivalent: "")
-        let options = NSMenu()
-        let hover = ClosureMenuItem(L("When the pointer rests in the menu bar")) {
-            AppDelegate.opensFromMenuBar.toggle()
-        }
-        hover.state = Self.opensFromMenuBar ? .on : .off
-        options.addItem(hover)
-        let peek = ClosureMenuItem(L("When something new hangs")) {
-            AppDelegate.peeksAtNew.toggle()
-        }
-        peek.state = Self.peeksAtNew ? .on : .off
-        options.addItem(peek)
-        let fullScreen = ClosureMenuItem(L("Over full screen apps")) { [weak self] in
-            FullScreen.showLineOver.toggle()
-            self?.refresh()
-        }
-        fullScreen.state = FullScreen.showLineOver ? .on : .off
-        options.addItem(fullScreen)
-        bringDown.submenu = options
-        menu.addItem(bringDown)
-
-        let folderItem = NSMenuItem(title: L("Also watch folders"), action: nil, keyEquivalent: "")
-        let folderMenu = NSMenu()
-        folderMenu.autoenablesItems = false
-        let folders = Self.extraFolders
-        for folder in folders {
-            let item = ClosureMenuItem(FileManager.default.displayName(atPath: folder.path)) {
-                NSWorkspace.shared.open(folder)
-            }
-            item.state = .on
-            folderMenu.addItem(item)
-        }
-        if !folders.isEmpty { folderMenu.addItem(.separator()) }
-        let add = ClosureMenuItem(L("Add Folder…")) { [weak self] in self?.chooseExtraFolder() }
-        add.isEnabled = folders.count < Self.maxExtraFolders
-        folderMenu.addItem(add)
-        if !folders.isEmpty {
-            let stop = NSMenuItem(title: L("Stop Watching"), action: nil, keyEquivalent: "")
-            let stopMenu = NSMenu()
-            for folder in folders {
-                stopMenu.addItem(ClosureMenuItem(FileManager.default.displayName(atPath: folder.path)) { [weak self] in
-                    AppDelegate.extraFolders.removeAll { $0.standardizedFileURL == folder.standardizedFileURL }
-                    self?.startWatcher()
-                })
-            }
-            stop.submenu = stopMenu
-            folderMenu.addItem(stop)
-        }
-        folderItem.submenu = folderMenu
-        menu.addItem(folderItem)
-
-        let keepItem = NSMenuItem(title: L("Keep on line"), action: nil, keyEquivalent: "")
-        let keeps = NSMenu()
-        let fit = ClosureMenuItem(L("As many as fit")) { [weak self] in self?.setKeep(nil) }
-        fit.state = Line.keepOnLine == nil ? .on : .off
-        keeps.addItem(fit)
-        for n in Line.keepChoices {
-            let item = ClosureMenuItem(String(format: L("%d photos"), n)) { [weak self] in self?.setKeep(n) }
-            item.state = Line.keepOnLine == n ? .on : .off
-            keeps.addItem(item)
-        }
-        keepItem.submenu = keeps
-        menu.addItem(keepItem)
-
-        let sizeItem = NSMenuItem(title: L("Size"), action: nil, keyEquivalent: "")
-        let sizes = NSMenu()
-        for (size, title) in [(Layout.Size.small, L("Small")), (.medium, L("Medium")), (.large, L("Large"))] {
-            let item = ClosureMenuItem(title) { [weak self] in self?.setSize(size) }
-            item.state = Layout.size == size ? .on : .off
-            sizes.addItem(item)
-        }
-        sizeItem.submenu = sizes
-        menu.addItem(sizeItem)
-
-        let shortcutItem = NSMenuItem(title: L("Shortcut"), action: nil, keyEquivalent: "")
-        let shortcuts = NSMenu()
-        let current = NSMenuItem(title: Shortcut.current?.display ?? L("None"), action: nil, keyEquivalent: "")
-        current.isEnabled = false
-        shortcuts.addItem(current)
-        shortcuts.addItem(ClosureMenuItem(L("Change Shortcut…")) { [weak self] in self?.changeShortcut() })
-        shortcutItem.submenu = shortcuts
-        menu.addItem(shortcutItem)
-
-        menu.addItem(ClosureMenuItem(L("Open screenshots folder")) { [weak self] in
+        menu.addItem(ClosureMenuItem(L("Open Screenshot Folder")) { [weak self] in
             guard let self else { return }
+            try? FileManager.default.createDirectory(at: self.watcher.folder, withIntermediateDirectories: true)
             NSWorkspace.shared.open(self.watcher.folder)
         })
-
-        menu.addItem(.separator())
-
-        let sound = ClosureMenuItem(L("Sounds")) { [weak self] in
-            guard let self else { return }
-            self.line.soundOn.toggle()
-        }
-        sound.state = line.soundOn ? .on : .off
-        menu.addItem(sound)
-
-        let login = ClosureMenuItem(L("Open at login")) {
-            AppDelegate.toggleLaunchAtLogin()
-        }
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(login)
-
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(L("Quit Screen Line"), key: "q") {
             NSApp.terminate(nil)
