@@ -88,16 +88,18 @@ struct PeggedView: View {
             .opacity(dragging ? 0.45 : 1)
             .overlay(alignment: .topLeading) {
                 // Drawn here, clicked through GrabView, which sits on top. A
-                // cross sends a file in Screen Line's folder to the Trash; for a
-                // file anywhere else it only hides it from the line.
-                Image(systemName: line.isInInbox(item.id) ? "xmark" : "eye.slash")
+                // cross sends a file from Screen Line's folder to the Desktop;
+                // for a file anywhere else it only takes it off the line.
+                Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.primary)
                     .frame(width: 20, height: 20)
                     .glassFrame(circle: true)
                     .padding(3)
-                    .opacity(hovering && !dragging ? 1 : 0)
-                    .scaleEffect(hovering ? 1 : 0.6)
+                    // Always there, so every photo can be taken down; on a
+                    // crowded line of small cards it waits for the pointer.
+                    .opacity(!dragging && (hovering || scale >= 0.5) ? 1 : 0)
+                    .scaleEffect(hovering ? 1 : 0.85)
                     .allowsHitTesting(false)
             }
             .overlay(GrabArea(item: item, line: line))
