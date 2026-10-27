@@ -103,11 +103,13 @@ struct LineView: View {
                                      : .easeIn(duration: 0.22), value: line.revealed)
 
             // The eye never tucks away: it is how the line comes back.
+            // The hit rect is measured before positioning: after it, it would
+            // be the whole strip, and every click on a photo would hit the eye.
             EyeButton(hides: line.isAlwaysDown)
-                .position(x: 30, y: Layout.ropeTop + 30)
                 .background(GeometryReader { g in
                     Color.clear.preference(key: HitRectsKey.self, value: [Line.eyeID: g.frame(in: .global)])
                 })
+                .position(x: 30, y: Layout.ropeTop + 30)
             }
         }
         .onPreferenceChange(HitRectsKey.self) { rects in
