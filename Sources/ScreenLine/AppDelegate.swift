@@ -52,11 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // What brings the line down, from the menu bar's "Bring the line down".
     // Out of the box, the first two are on and the third off.
 
-    /// Resting the pointer in the menu bar. Off, only the shortcut and the
-    /// menu open it.
+    /// Resting the pointer in the menu bar. Off: once the eye is closed, the
+    /// line only comes back from the eye, the shortcut, or a file being dragged.
     static var opensFromMenuBar: Bool {
-        get { !UserDefaults.standard.bool(forKey: "menuBarRevealOff") }
-        set { UserDefaults.standard.set(!newValue, forKey: "menuBarRevealOff") }
+        get { UserDefaults.standard.bool(forKey: "menuBarReveal") }
+        set { UserDefaults.standard.set(newValue, forKey: "menuBarReveal") }
     }
 
     /// Something new hanging shows itself for a moment. Off, it hangs
@@ -274,7 +274,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateCapacity()
         wanted = true
         refresh()
-        if Self.peeksAtNew { reveal(peekFor: 2.5) }
+        // A hidden line stays hidden: a new capture hangs on it quietly.
+        if Self.peeksAtNew, Line.alwaysDown { reveal(peekFor: 2.5) }
     }
 
     // MARK: The capture flying to the line
