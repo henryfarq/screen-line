@@ -9,6 +9,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let line = Line()
     private var panel: LinePanel!
+    private var eyePanel: EyePanel!
     private var statusItem: NSStatusItem!
     private var watcher: ScreenshotWatcher!
     /// In inbox mode, a second watcher on the Desktop. If a macOS version
@@ -72,6 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let container = DropContainer(host: host)
         container.onDrop = { [weak self] urls in self?.hangDropped(urls) }
         panel = LinePanel(content: container)
+        eyePanel = EyePanel(line: line)
+        eyePanel.onClick = { [weak self] in self?.setAlwaysDown(!Line.alwaysDown) }
+        panel.onPlaced = { [weak self] screen in self?.eyePanel.place(on: screen) }
         panel.placeOnScreen()
         updateCapacity()
 
@@ -85,7 +89,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         setUpStatusItem()
         watchMenuBarClicks()
-        watchEyeClicks()
         line.onToggleHide = { [weak self] in self?.setAlwaysDown(!Line.alwaysDown) }
         panel.placeOnScreen()
         refresh()
@@ -375,6 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.placeOnScreen(panel.screen)
         updateCapacity()
         panel.orderFrontRegardless()
+        eyePanel.orderFrontRegardless()
     }
 
     /// Decides whether the panel is ordered in at all: something to show,
@@ -396,10 +400,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !isPresent else { return }
         isPresent = true
         panel.alphaValue = 1
-        // The window itself only comes in while the line is down; see setRevealed.
-        // The panel stays in even with the line tucked away: the eye lives on
-        // it, and clicks pass through everywhere else.
+        // The panel stays in even with the line tucked away: clicks pass
+        // through it everywhere else. The eye has a window of its own.
         panel.orderFrontRegardless()
+        eyePanel.place(on: panel.screen)
+        eyePanel.orderFrontRegardless()
         if Line.alwaysDown { reveal() }
     }
 
@@ -410,6 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self, !self.isPresent else { return }
             self.panel.orderOut(nil)
+            self.eyePanel.orderOut(nil)
         }
     }
 
@@ -461,21 +467,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pinned = false
             setRevealed(false)
         }
-    }
-
-    /// The eye is drawn by the line view but clicked here, like the photos
-    /// are: the panel never becomes the active window, and this does not
-    /// depend on how SwiftUI treats a first click.
-    private func watchEyeClicks() {
-        let monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            guard let self, event.window === self.panel,
-                  let eye = self.line.hitRects[Line.eyeID] else { return event }
-            let point = CGPoint(x: event.locationInWindow.x, y: self.panel.frame.height - event.locationInWindow.y)
-            guard eye.insetBy(dx: -4, dy: -4).contains(point) else { return event }
-            self.setAlwaysDown(!Line.alwaysDown)
-            return nil
-        }
-        if let monitor { clickMonitors.append(monitor) }
     }
 
     @objc private func toggle() {
@@ -636,8 +627,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !GrabView.isDragging, !dropActive else { return }
         let local = panel.convertPoint(fromScreen: mouse)
         let flipped = CGPoint(x: local.x, y: panel.frame.height - local.y)
-        // Tucked away, only the eye takes clicks.
-        let rects = isRevealed ? Array(line.hitRects.values) : [line.hitRects[Line.eyeID]].compactMap { $0 }
+        // Tucked away, the line takes no clicks.
+        let rects = isRevealed ? Array(line.hitRects.values) : []
         var overPhoto = rects.contains { $0.insetBy(dx: -4, dy: -4).contains(flipped) }
         // A line longer than the screen also takes the band the photos hang
         // in, gaps included, so a swipe anywhere along it moves it.

@@ -23,6 +23,8 @@ final class LinePanel: NSPanel {
 
     /// Two-finger swipes and the scroll wheel, for moving along a long line.
     var onScroll: ((NSEvent) -> Void)?
+    /// Called after the line is placed on a screen.
+    var onPlaced: ((NSScreen?) -> Void)?
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .scrollWheel, let onScroll {
@@ -48,5 +50,6 @@ final class LinePanel: NSPanel {
         let target = NSRect(x: visible.minX, y: visible.maxY - Layout.panelHeight,
                             width: visible.width, height: Layout.panelHeight)
         if frame != target { setFrame(target, display: true) }
+        onPlaced?(screen ?? LinePanel.screenUnderPointer())
     }
 }

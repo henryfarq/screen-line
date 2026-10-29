@@ -43,8 +43,6 @@ final class Line: ObservableObject {
     }
     @Published var isAlwaysDown = Line.alwaysDown
     var onToggleHide: (() -> Void)?
-    /// The eye's place in `hitRects`.
-    static let eyeID = UUID()
 
     /// Card frames in window coordinates, reported by the views. The panel
     /// uses them to only catch clicks over photos and let the rest through.

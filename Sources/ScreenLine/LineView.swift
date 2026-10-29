@@ -102,35 +102,11 @@ struct LineView: View {
             .animation(line.revealed ? .spring(response: 0.42, dampingFraction: 0.82)
                                      : .easeIn(duration: 0.22), value: line.revealed)
 
-            // The eye never tucks away: it is how the line comes back.
-            // The hit rect is measured before positioning: after it, it would
-            // be the whole strip, and every click on a photo would hit the eye.
-            EyeButton(hides: line.isAlwaysDown)
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: HitRectsKey.self, value: [Line.eyeID: g.frame(in: .global)])
-                })
-                .position(x: 30, y: Layout.ropeTop + 30)
             }
         }
         .onPreferenceChange(HitRectsKey.self) { rects in
             line.hitRects = rects
         }
-    }
-}
-
-/// An open eye while the line stays down (click to hide it); a closed eye
-/// once it is hidden (click to keep it down).
-private struct EyeButton: View {
-    let hides: Bool
-
-    var body: some View {
-        Image(systemName: hides ? "eye" : "eye.slash")
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.primary)
-            .frame(width: 28, height: 28)
-            .glassFrame(circle: true)
-            .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
-            .allowsHitTesting(false)
     }
 }
 
