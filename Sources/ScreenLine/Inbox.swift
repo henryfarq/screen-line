@@ -94,14 +94,33 @@ enum Inbox {
     static func restore() {
         guard isApplied else { return }
         let saved = UserDefaults.standard.dictionary(forKey: savedKey) ?? [:]
-        set(locationKey, saved["location"])
-        set(screenshotLocationKey, saved["locationScreenshot"])
-        set(recordingLocationKey, saved["locationRecording"])
+        // A saved folder that is gone, or is an inbox itself, is left out:
+        // macOS then saves to the Desktop again.
+        set(locationKey, usable(saved["location"]))
+        set(screenshotLocationKey, usable(saved["locationScreenshot"]))
+        set(recordingLocationKey, usable(saved["locationRecording"]))
         set(targetKey, saved["target"])
         set(screenshotTargetKey, saved["targetScreenshot"])
         set(recordingTargetKey, saved["targetRecording"])
-        set(thumbnailKey, saved["thumbnail"])
+        // The thumbnail saved alongside an inbox folder was turned off by
+        // Screen Line, not by you, so it comes back on.
+        let savedByInbox = [saved["location"], saved["locationScreenshot"]]
+            .contains { $0 != nil && usable($0) == nil }
+        set(thumbnailKey, savedByInbox ? nil : saved["thumbnail"])
         UserDefaults.standard.removeObject(forKey: savedKey)
+    }
+
+    /// A screenshot folder worth putting back: it still exists, and it is
+    /// not Screen Line's inbox, nor the one it used when it was Tendedero.
+    private static func usable(_ value: Any?) -> String? {
+        guard let path = value as? String, !path.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let inboxes = ["Screen Line", "Tendedero"].map { support.appendingPathComponent($0).standardizedFileURL.path }
+        if inboxes.contains(where: { url.path == $0 || url.path.hasPrefix($0 + "/") }) { return nil }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        return path
     }
 
     /// Writes through cfprefsd, so the screenshot service sees it at once.
