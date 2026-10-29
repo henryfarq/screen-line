@@ -78,6 +78,19 @@ struct PeggedView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                // Any other file says what kind it is, like PDF or DOCX.
+                if item.isDocument, !item.url.pathExtension.isEmpty {
+                    Text(item.url.pathExtension.uppercased())
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .glassFrame(cornerRadius: 6)
+                        .padding(5)
+                        .allowsHitTesting(false)
+                }
+            }
             .padding(Frame.inset)
             .glassFrame(cornerRadius: Frame.radius)
             .shadow(color: .black.opacity(hovering ? 0.26 : 0.18), radius: hovering ? 14 : 10, y: hovering ? 8 : 5)

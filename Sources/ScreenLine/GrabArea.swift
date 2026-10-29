@@ -28,7 +28,7 @@ struct GrabArea: NSViewRepresentable {
     private func configure(_ view: GrabView) {
         let id = item.id
         let line = line
-        let isRecording = item.isRecording
+        let canMarkup = item.canMarkup
         view.url = item.url
         view.dragImage = item.thumb
         view.onClick = { line.copy(id) }
@@ -51,7 +51,7 @@ struct GrabArea: NSViewRepresentable {
             menu.addItem(ClosureMenuItem(L("Copy")) { line.copy(id) })
             menu.addItem(ClosureMenuItem(L("Open")) { line.open(id) })
             menu.addItem(ClosureMenuItem(L("Quick Look")) { line.quickLook(id) })
-            if !isRecording {
+            if canMarkup {
                 menu.addItem(ClosureMenuItem(L("Markup")) { line.markup(id) })
             }
             menu.addItem(ClosureMenuItem(L("Show in Finder")) { line.reveal(id) })

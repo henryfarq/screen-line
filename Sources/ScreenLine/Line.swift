@@ -2,6 +2,8 @@ import AppKit
 import AVFoundation
 import Combine
 import os
+import QuickLookThumbnailing
+import UniformTypeIdentifiers
 
 let log = Logger(subsystem: "com.henry.screenline", category: "line")
 
@@ -17,6 +19,13 @@ struct Pegged: Identifiable, Equatable {
     var flying = false
     /// A screen recording rather than a screenshot.
     var isRecording: Bool { ScreenLine.isRecording(url) }
+    /// A photo, as opposed to a recording or any other file.
+    var isImage: Bool { ScreenLine.isImage(url) }
+    /// Any other file, like a PDF or a document: it hangs as its preview
+    /// and says what kind of file it is.
+    var isDocument: Bool { !isImage && !isRecording }
+    /// Markup can draw on photos and PDFs.
+    var canMarkup: Bool { isImage || url.pathExtension.lowercased() == "pdf" }
 
     static func == (a: Pegged, b: Pegged) -> Bool {
         a.id == b.id && a.falling == b.falling && a.flying == b.flying && a.thumb === b.thumb
@@ -166,7 +175,7 @@ final class Line: ObservableObject {
         guard let item = items.first(where: { $0.id == id }) else { return }
         let entry = NSPasteboardItem()
         // A recording is copied as the file, which apps paste as the video.
-        if !item.isRecording, let png = pngData(item.url) { entry.setData(png, forType: .png) }
+        if item.isImage, let png = pngData(item.url) { entry.setData(png, forType: .png) }
         entry.setString(item.url.absoluteString, forType: .fileURL)
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -305,6 +314,8 @@ final class Line: ObservableObject {
         guard let item = items.first(where: { $0.id == id }) else { return }
         if item.isRecording {
             Trim.shared.edit(item.url, size: item.thumb.size)
+        } else if !item.canMarkup {
+            NSWorkspace.shared.open(item.url)
         } else {
             Markup.shared.edit(item.url)
         }
@@ -392,6 +403,7 @@ func isRecording(_ url: URL) -> Bool {
 /// Retina screen, and no more: every photo on the line keeps one in memory.
 func makeThumbnail(_ url: URL, maxPixels: Int = Int(320 * Layout.size.scale)) -> NSImage? {
     if isRecording(url) { return firstFrame(url, maxPixels: maxPixels) }
+    if !isImage(url) { return documentPreview(url, maxPixels: maxPixels) }
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
     let options: [CFString: Any] = [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -400,6 +412,33 @@ func makeThumbnail(_ url: URL, maxPixels: Int = Int(320 * Layout.size.scale)) ->
     ]
     guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
     return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+}
+
+/// Photos: anything macOS knows as an image.
+func isImage(_ url: URL) -> Bool {
+    UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) ?? false
+}
+
+/// Any other file shows what Finder would: its first page or contents when
+/// Quick Look can draw them, otherwise its icon.
+private func documentPreview(_ url: URL, maxPixels: Int) -> NSImage? {
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let side = CGFloat(maxPixels) / 2
+    let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: side, height: side),
+                                               scale: 2, representationTypes: .thumbnail)
+    let done = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var preview: CGImage?
+    QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { thumbnail, _ in
+        preview = thumbnail?.cgImage
+        done.signal()
+    }
+    // A preview that takes too long is not worth holding the line up for.
+    if done.wait(timeout: .now() + 1.5) == .success, let cg = preview {
+        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+    }
+    let icon = NSWorkspace.shared.icon(forFile: url.path)
+    icon.size = NSSize(width: side, height: side)
+    return icon
 }
 
 /// A recording shows its first frame.

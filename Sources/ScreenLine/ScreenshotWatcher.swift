@@ -29,9 +29,11 @@ final class ScreenshotWatcher {
 
     static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tif", "tiff", "gif", "webp"]
 
-    /// Whether a file can hang on the line: an image or a recording.
+    /// Whether a dropped file can hang on the line: any file, but not a
+    /// folder. A document saved as a bundle, like a Pages file, counts.
     static func isHangable(_ url: URL) -> Bool {
-        imageExtensions.contains(url.pathExtension.lowercased()) || isRecording(url)
+        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else { return false }
+        return values.isDirectory != true || values.isPackage == true
     }
 
     /// Files Screen Line itself sent back to the Desktop. They still carry
