@@ -176,6 +176,7 @@ final class GrabView: NSView, NSDraggingSource {
         // Released where nothing accepts it: it flies back to the line.
         session.animatesToStartingPositionsOnCancelOrFail = true
         GrabView.isDragging = true
+        ScreenshotWatcher.markDraggedOut(url)
         onDragStart()
     }
 

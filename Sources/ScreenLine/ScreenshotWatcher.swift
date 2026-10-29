@@ -46,7 +46,20 @@ final class ScreenshotWatcher {
 
     private static func wasReturned(_ url: URL) -> Bool {
         returnedLock.lock(); defer { returnedLock.unlock() }
-        return returned.contains(url.standardizedFileURL.path)
+        if returned.contains(url.standardizedFileURL.path) { return true }
+        // Dragged off the line into a folder: the file lands there with its
+        // screenshot tag, and must not hang again as a new capture.
+        draggedOut = draggedOut.filter { Date().timeIntervalSince($0.value) < 60 }
+        return draggedOut[url.lastPathComponent] != nil
+    }
+
+    nonisolated(unsafe) private static var draggedOut: [String: Date] = [:]
+
+    /// A photo is being dragged off the line. Wherever Finder puts it, it
+    /// is not a new capture.
+    static func markDraggedOut(_ url: URL) {
+        returnedLock.lock(); defer { returnedLock.unlock() }
+        draggedOut[url.lastPathComponent] = Date()
     }
 
     static let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
@@ -193,6 +206,9 @@ final class ScreenshotWatcher {
 
     private func isCandidate(_ url: URL) -> Bool {
         if Self.wasReturned(url) { return false }
+        // A converted copy made by FileWheel keeps the original's name ("Screen
+        // Recording …"), but it is not a new capture.
+        if Self.madeByFileWheel(url) { return false }
         if isRecording(url) {
             if inInbox { return true }
             // A folder chosen by hand only gets images, never every video in it.
@@ -212,6 +228,13 @@ final class ScreenshotWatcher {
     private static func looksLikeRecording(_ url: URL) -> Bool {
         let name = url.lastPathComponent
         return recordingNames.contains { name.hasPrefix($0) }
+    }
+
+    private static func madeByFileWheel(_ url: URL) -> Bool {
+        url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return false }
+            return getxattr(path, "com.henry.filewheel.converted", nil, 0, 0, 0) >= 0
+        }
     }
 
     private func isScreenCapture(_ url: URL) -> Bool {

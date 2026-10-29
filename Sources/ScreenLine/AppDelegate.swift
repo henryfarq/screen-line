@@ -277,8 +277,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateCapacity()
         wanted = true
         refresh()
-        // A hidden line stays hidden: a new capture hangs on it quietly.
-        if Self.peeksAtNew, Line.alwaysDown { reveal(peekFor: 2.5) }
+        // Even with the eye closed, the line comes down for a moment so you
+        // see the capture land, then tucks back up.
+        if Self.peeksAtNew { reveal(peekFor: Line.alwaysDown ? 2.5 : 1.5) }
     }
 
     // MARK: The capture flying to the line
