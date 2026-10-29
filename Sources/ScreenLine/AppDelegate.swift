@@ -591,16 +591,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// How far from the top edge a dragged photo starts to bring the line down.
-    private static let dropReach: CGFloat = 140
+    /// How far below the menu bar a dragged file starts to bring the line down.
+    private static let dropReach: CGFloat = 60
+    /// How far into the menu bar the zone reaches. Most of the menu bar is
+    /// left to other apps, which take drops there too.
+    private static let dropIntoMenuBar: CGFloat = 8
 
     private var hangableDrag = false
 
+    /// A narrow band along the line: just under the menu bar while the line
+    /// is up, and down to the bottom of the photos once it hangs.
     private func isNearTop(_ mouse: NSPoint) -> Bool {
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) else { return false }
-        let edge = isRevealed ? min(panel.frame.minY - 20, screen.frame.maxY - Self.dropReach)
-                              : screen.frame.maxY - Self.dropReach
-        return mouse.y >= edge
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, true) || NSMouseInRect(mouse, $0.frame, false) }) else { return false }
+        let menuBarBottom = screen.visibleFrame.maxY
+        let bottom = isRevealed ? max(panel.frame.maxY - Layout.photoMaxHeight - 60, menuBarBottom - Self.dropReach)
+                                : menuBarBottom - Self.dropReach
+        return mouse.y >= bottom && mouse.y <= menuBarBottom + Self.dropIntoMenuBar
     }
 
     private func tick() {
