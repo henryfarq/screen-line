@@ -318,12 +318,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Screenshots and recordings dropped on the line move onto it: the file
     /// leaves where it was, and goes back to the Desktop when taken down.
     private func hangDropped(_ urls: [URL]) {
+        var refused = false
         for url in urls {
             if line.items.contains(where: { $0.url == url && !$0.falling }) { continue }
             // If it cannot be moved, it still hangs from where it is.
-            line.hang(line.moveIntoInbox(url) ?? url)
+            if line.hang(line.moveIntoInbox(url) ?? url) == nil, !canOpen(url) {
+                refused = true
+            }
         }
         reveal()
+        // macOS keeps the folder the file came from, usually the Desktop,
+        // closed to Screen Line until you allow it. Say so instead of
+        // dropping it silently.
+        if refused { DispatchQueue.main.async { [weak self] in self?.explainFolderAccess() } }
+    }
+
+    private func canOpen(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        try? handle.close()
+        return true
+    }
+
+    private func explainFolderAccess() {
+        let alert = NSAlert()
+        alert.messageText = L("Screen Line can't open that file")
+        alert.informativeText = L("macOS hasn't let Screen Line into the folder it came from. In System Settings, open Privacy & Security, then Files & Folders, and turn on Desktop Folder (and any other folder you drag from) for ScreenLine.")
+        alert.addButton(withTitle: L("Open System Settings"))
+        alert.addButton(withTitle: L("Not now"))
+        if let icon = NSImage(named: "ScreenLine") ?? NSApp.applicationIconImage { alert.icon = icon }
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func fly(_ id: UUID, from: CGRect) {
