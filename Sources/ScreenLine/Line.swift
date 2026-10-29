@@ -85,6 +85,38 @@ final class Line: ObservableObject {
     var liveCount: Int { items.filter { !$0.falling }.count }
 
     private let storeKey = "pegged"
+    private let installKey = "installStamp"
+
+    /// A freshly installed copy, a new download or an update, starts with a
+    /// bare line. Copying the same app again keeps its date, so that does not
+    /// count.
+    private func isNewInstall() -> Bool {
+        let stamp = Self.installStamp
+        defer { UserDefaults.standard.set(stamp, forKey: installKey) }
+        return UserDefaults.standard.string(forKey: installKey) != stamp
+    }
+
+    private static var installStamp: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let built = Bundle.main.executableURL
+            .flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        return "\(version) \(Int(built?.timeIntervalSince1970 ?? 0))"
+    }
+
+    /// What hung on the line before goes to the Desktop, so nothing is left
+    /// behind in Screen Line's hidden folder.
+    private func clearForNewInstall() {
+        let paths = UserDefaults.standard.stringArray(forKey: storeKey) ?? []
+        let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+        for path in paths where FileManager.default.fileExists(atPath: path) {
+            let url = URL(fileURLWithPath: path)
+            guard url.deletingLastPathComponent().standardizedFileURL == Inbox.folder.standardizedFileURL else { continue }
+            let target = uniqueURL(in: desktop, for: url.lastPathComponent)
+            ScreenshotWatcher.markReturned(target)
+            try? FileManager.default.moveItem(at: url, to: target)
+        }
+        UserDefaults.standard.removeObject(forKey: storeKey)
+    }
 
     init() {
         restore()
@@ -248,9 +280,6 @@ final class Line: ObservableObject {
         }
     }
 
-    /// The oldest photo falling off a full line. Like the cross, a file from
-    /// Screen Line's folder goes to the Trash, or nothing would ever take it out
-    /// of that folder. If the Trash refuses it, it still leaves the line.
     /// Moves along a line that holds more than fit, from a scroll gesture.
     func scroll(by delta: CGFloat) {
         // A line that shrinks its cards to fit has nothing to scroll to.
@@ -269,6 +298,8 @@ final class Line: ObservableObject {
         scroll = 0
     }
 
+    /// The oldest photo, the one furthest left, falling off a full line. Like
+    /// the cross, it goes to the Desktop.
     private func letGo(_ id: UUID) {
         discard(id, quietly: true)
     }
@@ -370,6 +401,7 @@ final class Line: ObservableObject {
     /// screen, so the capacity is still the default one: hanging through
     /// `hang` would let photos fall off a wide screen's line at every launch.
     private func restore() {
+        if isNewInstall() { clearForNewInstall() }
         let paths = UserDefaults.standard.stringArray(forKey: storeKey) ?? []
         for path in paths where FileManager.default.fileExists(atPath: path) {
             let url = URL(fileURLWithPath: path)
