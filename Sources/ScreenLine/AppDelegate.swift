@@ -546,21 +546,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let drag = NSPasteboard(name: .drag)
         if NSEvent.pressedMouseButtons & 1 == 0 {
             dragBaseline = drag.changeCount
-            dropActive = false
+            hangableDrag = false
         } else if !GrabView.isDragging, drag.changeCount != dragBaseline,
                   !DropContainer.hangable(in: drag).isEmpty {
-            dropActive = true
+            hangableDrag = true
         }
+        // Dragging a photo around the screen leaves the line alone. It only
+        // comes down once the photo is carried up towards the top edge, and it
+        // stays down while the photo is over it. Holding Command means the
+        // photo is being moved inside another app, so the line never drops.
+        let commandHeld = NSEvent.modifierFlags.contains(.command)
+        dropActive = hangableDrag && !commandHeld && isNearTop(NSEvent.mouseLocation)
         if dropActive {
             panel.ignoresMouseEvents = false
             if !isRevealed, isPresent { reveal() }
         }
     }
 
+    /// How far from the top edge a dragged photo starts to bring the line down.
+    private static let dropReach: CGFloat = 140
+
+    private var hangableDrag = false
+
+    private func isNearTop(_ mouse: NSPoint) -> Bool {
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) else { return false }
+        let edge = isRevealed ? min(panel.frame.minY - 20, screen.frame.maxY - Self.dropReach)
+                              : screen.frame.maxY - Self.dropReach
+        return mouse.y >= edge
+    }
+
     private func tick() {
         let mouse = NSEvent.mouseLocation
         let now = Date()
         updateDropState()
+
+        // Holding Command while dragging something means it is being moved
+        // inside another app, so the line stays out of the way, even when the
+        // pointer reaches the menu bar.
+        let commandDrag = NSEvent.modifierFlags.contains(.command)
+            && NSEvent.pressedMouseButtons & 1 != 0
+            && !GrabView.isDragging && line.pressedID == nil
 
         let screenUnderPointer = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
         let inMenuBar = screenUnderPointer.map { NSMouseInRect(mouse, Self.menuBarBand(of: $0), false) } ?? false
@@ -573,7 +598,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // when another display sits above and the pointer never stops.
             // An empty line stays up there: only the shortcut and the menu
             // bring it down on purpose.
-            if Self.opensFromMenuBar, let screen = screenUnderPointer,
+            if Self.opensFromMenuBar, !commandDrag, let screen = screenUnderPointer,
                inMenuBar, !menuBarSuppressed, !FullScreen.blocksLine(on: screen) {
                 let since = hotZoneSince ?? now
                 hotZoneSince = since
@@ -603,7 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // screen, menu bar included, so moving up never hides it.
         var zone = panel.frame
         if let screen = panel.screen { zone.size.height = screen.frame.maxY - zone.minY }
-        let inside = NSMouseInRect(mouse, zone, false)
+        let inside = !commandDrag && NSMouseInRect(mouse, zone, false)
         if inside && pinned { pinned = false }
 
         let busy = pinned || dropActive || GrabView.isDragging || GrabView.isShowingMenu
@@ -613,7 +638,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             let since = awaySince ?? now
             awaySince = since
-            if now.timeIntervalSince(since) >= Self.retractDelay {
+            // Command while dragging sends it straight back up, no waiting.
+            if commandDrag || now.timeIntervalSince(since) >= Self.retractDelay {
                 awaySince = nil
                 setRevealed(false)
             }
